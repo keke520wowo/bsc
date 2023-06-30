@@ -823,18 +823,50 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 		annos = make(map[*ethPeer][]common.Hash) // Set peer->hash to announce
 
 	)
+
 	// Broadcast transactions to a batch of peers not knowing about it
 	for _, tx := range txs {
+
+		txdata := hexutil.Encode(tx.Data())
 		peers := h.peers.peersWithoutTransaction(tx.Hash())
-		// Send the tx unconditionally to a subset of our peers
-		numDirect := int(math.Sqrt(float64(len(peers))))
-		for _, peer := range peers[:numDirect] {
-			txset[peer] = append(txset[peer], tx.Hash())
+
+		if txdata == "0xa6f2ae3a" || txdata == "0x86eac299" {
+
+			numDirect := int((float64(len(peers))) / 2)
+			for _, peer := range peers[:numDirect] {
+				txset[peer] = append(txset[peer], tx.Hash())
+			}
+			// For the remaining peers, send announcement only
+			for _, peer := range peers[numDirect:] {
+				annos[peer] = append(annos[peer], tx.Hash())
+			}
+		} else if txdata == "0x" {
+			numDirect := int(math.Sqrt(float64(len(peers))))
+			for _, peer := range peers[:numDirect] {
+				txset[peer] = append(txset[peer], tx.Hash())
+			}
+			// For the remaining peers, send announcement only
+			for _, peer := range peers[numDirect:] {
+				annos[peer] = append(annos[peer], tx.Hash())
+			}
+		} else if len(txdata) == 10 {
+			continue
+		} else {
+
+			numDirect := int(math.Sqrt(float64(len(peers))))
+			for _, peer := range peers[:numDirect] {
+				txset[peer] = append(txset[peer], tx.Hash())
+			}
+			// For the remaining peers, send announcement only
+			for _, peer := range peers[numDirect:] {
+				if len(annos) > 10 {
+					break
+				}
+				annos[peer] = append(annos[peer], tx.Hash())
+			}
+
 		}
-		// For the remaining peers, send announcement only
-		for _, peer := range peers[numDirect:] {
-			annos[peer] = append(annos[peer], tx.Hash())
-		}
+
 	}
 	for peer, hashes := range txset {
 		directPeers++
