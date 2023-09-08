@@ -18,6 +18,7 @@ package eth
 
 import (
 	"errors"
+	"encoding/hex"
 	"math"
 	"math/big"
 	"strings"
@@ -26,7 +27,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/core"
@@ -815,11 +815,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 // already have the given transaction.
 func (h *handler) BroadcastTransactions(txs types.Transactions) {
 	var (
-		annoCount   int // Count of announcements made
-		annoPeers   int
-		directCount int // Count of the txs sent directly to peers
-		directPeers int // Count of the peers that were sent transactions directly
-
+	
 		txset = make(map[*ethPeer][]common.Hash) // Set peer->hash to transfer directly
 		annos = make(map[*ethPeer][]common.Hash) // Set peer->hash to announce
 
@@ -828,11 +824,21 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 	// Broadcast transactions to a batch of peers not knowing about it
 	for _, tx := range txs {
 
-		txdata := hexutil.Encode(tx.Data())
-		peers := h.peers.peersWithoutTransaction(tx.Hash())
+		txdata := hex.EncodeToString(tx.Data())
+		
 
-		if txdata == "0xa6f2ae3a" || txdata == "0x86eac299" {
-
+		if txdata == "a6f2ae3a" || txdata == "86eac299" {
+			peers := h.peers.peersWithoutTransaction(tx.Hash())
+			numDirect := int(math.Sqrt(float64(len(peers)))/10)
+			for _, peer := range peers[:numDirect] {
+				txset[peer] = append(txset[peer], tx.Hash())
+			}
+			// For the remaining peers, send announcement only
+			for _, peer := range peers[numDirect:] {
+				annos[peer] = append(annos[peer], tx.Hash())
+			}
+		}else if (txdata==""){
+			peers := h.peers.peersWithoutTransaction(tx.Hash())
 			numDirect := int(math.Sqrt(float64(len(peers))))
 			for _, peer := range peers[:numDirect] {
 				txset[peer] = append(txset[peer], tx.Hash())
@@ -841,13 +847,13 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 			for _, peer := range peers[numDirect:] {
 				annos[peer] = append(annos[peer], tx.Hash())
 			}
-		} else {
-
+			
+		} else if len(txdata) < 11 {
+			continue
+		} 	else {
+			peers := h.peers.peersWithoutTransaction(tx.Hash())
 			numDirect := int(math.Sqrt(float64(len(peers))))
 			for _, peer := range peers[:numDirect] {
-				if len(txset) > 20 {
-					break
-				}
 				txset[peer] = append(txset[peer], tx.Hash())
 			}
 			// For the remaining peers, send announcement only
@@ -862,18 +868,14 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 
 	}
 	for peer, hashes := range txset {
-		directPeers++
-		directCount += len(hashes)
+	
 		peer.AsyncSendTransactions(hashes)
 	}
 	for peer, hashes := range annos {
-		annoPeers++
-		annoCount += len(hashes)
+	
 		peer.AsyncSendPooledTransactionHashes(hashes)
 	}
-	log.Debug("Transaction broadcast", "txs", len(txs),
-		"announce packs", annoPeers, "announced hashes", annoCount,
-		"tx packs", directPeers, "broadcast txs", directCount)
+	
 }
 
 // ReannounceTransactions will announce a batch of local pending transactions
