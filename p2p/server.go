@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"net"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -989,23 +988,6 @@ func (srv *Server) SetupConn(fd net.Conn, flags connFlag, dialDest *enode.Node) 
 		c.transport = srv.newTransport(fd, dialDest.Pubkey())
 	}
 
-	allpeer := srv.PeersInfo()
-
-	ip := c.fd.RemoteAddr().String()
-	//	log.Info("所有的peer长度", string(len(allpeer)), ip)
-	index := strings.Index(ip, ":")
-	if index != -1 {
-		ip = ip[0:index]
-	}
-	//number := 0
-
-	for _, peer := range allpeer {
-		if strings.Contains(peer.Network.RemoteAddress, ip) {
-			//	boolreturn = true
-			//log.Info(peer.Network.RemoteAddress, ip)
-			return errors.New("dial destination doesn't have a secp256k1 public key")
-		}
-	}
 	err := srv.setupConn(c, flags, dialDest)
 	if err != nil {
 		c.close(err)
